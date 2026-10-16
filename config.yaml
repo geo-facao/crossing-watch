@@ -1,0 +1,18 @@
+camera:
+  index: 0
+  width: 640
+  height: 480
+detector:
+  model: yolo11n.pt
+  confidence: 0.4
+  image_size: 320
+zone:
+  points:
+  - - 44
+    - 32
+  - - 605
+    - 26
+  - - 602
+    - 425
+  - - 74
+    - 440
