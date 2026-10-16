@@ -21,6 +21,9 @@ CONFIG_PATH = os.path.join(ROOT, "config.yaml")
 MODEL_PATH = os.path.join(ROOT, "yolo11n.pt")  # ASSUMED location; adjust if different
 ZONE_LABEL = "roadside"
 WINDOW_NAME = "wildlife-crossing"
+# COCO classes that count as wildlife
+ANIMAL_CLASSES = {"bird", "cat", "dog", "horse", "sheep", "cow",
+                  "elephant", "bear", "zebra", "giraffe"}
 
 
 def load_config():
@@ -49,6 +52,8 @@ def detect(model, frame, conf_min):
             continue
         box = tuple(float(v) for v in b.xyxy[0])
         cls_name = result.names[int(b.cls[0])]
+        if cls_name not in ANIMAL_CLASSES:
+            continue
         out.append((box, conf, cls_name))
     return out
 
@@ -79,7 +84,7 @@ def main():
     log = DetectionLogger(os.path.join(ROOT, "data", "logs", "detections.csv"))
 
     cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_NORMAL)
-    cv2.setWindowProperty(WINDOW_NAME, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+    cv2.resizeWindow(WINDOW_NAME, 960, 720)
 
     prev_state = "IDLE"
     try:
