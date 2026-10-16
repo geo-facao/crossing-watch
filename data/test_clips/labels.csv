@@ -1,0 +1,5 @@
+filename,expected,zone,notes
+animal_in_zone.mp4,ALERT,left-half,cat walks slowly into the left half
+animal_outside_zone.mp4,IDLE,left-half,cat stays in the right half
+empty_road.mp4,IDLE,left-half,no animal in view
+person_on_road.mp4,IDLE,left-half,person walks through; not an animal class
