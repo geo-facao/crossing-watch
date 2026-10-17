@@ -1,7 +1,11 @@
 """Main loop: camera -> detector -> zone check -> decision -> display -> log.
 
 Run from the project root:  python src/main.py
-Quit with 'q' or Esc while the window has focus, or Ctrl+C in the terminal.
+Quit with 'q' or Esc in the window, close the window with its X, or press
+Ctrl+C in the terminal.
+
+The screen and log say "animal". The model's guessed species is only
+written to the log's raw_label column, since it is often wrong for wildlife.
 """
 import os
 import sys
@@ -23,7 +27,8 @@ CONFIG_PATH = os.path.join(ROOT, "config.yaml")
 MODEL_PATH = os.path.join(ROOT, "yolo11n.pt")
 ZONE_LABEL = "roadside"
 QUIT_KEYS = (ord("q"), 27)          # 'q' or Esc (27)
-# COCO classes that count as wildlife
+# COCO classes the model may guess for an animal. Deer and coyote are not
+# COCO classes, so the model often guesses a similar one (e.g. "cow").
 ANIMAL_CLASSES = {"bird", "cat", "dog", "horse", "sheep", "cow",
                   "elephant", "bear", "zebra", "giraffe"}
 
@@ -103,7 +108,7 @@ def main():
     log = DetectionLogger(os.path.join(ROOT, "data", "logs", "detections.csv"))
 
     alert_count = 0
-    last_alert = None        # text like "17:23:21 cat 0.83"
+    last_alert = None        # text like "17:23:21 animal 0.83"
 
     make_window()
     prev_state = "IDLE"
@@ -128,10 +133,11 @@ def main():
 
             if state == "ALERT" and prev_state == "IDLE" and best_hit is not None:
                 _, conf, name = best_hit
-                log.log_alert(name, conf, zone=ZONE_LABEL)
+                # Log "animal" for the claim, and the model's guess for review
+                log.log_alert("animal", conf, zone=ZONE_LABEL, raw_label=name)
                 alert_count += 1
-                last_alert = f"{datetime.now():%H:%M:%S} {name} {conf:.2f}"
-                print(f"ALERT: {name} ({conf:.2f})")
+                last_alert = f"{datetime.now():%H:%M:%S} animal {conf:.2f}"
+                print(f"ALERT: animal detected ({conf:.2f})")
             prev_state = state
 
             view = draw(frame.copy(), zone_poly, state, hits)
