@@ -1,8 +1,9 @@
 """Monitor window: live camera on the left, status panel on the right.
 
 The window is a normal window (title bar and close button) unless
-START_FULLSCREEN is True. Quit with 'q', Esc, or Ctrl+C in the terminal.
-Each draw function returns the key pressed, or 255 if none.
+START_FULLSCREEN is True. Quit with 'q', Esc, Ctrl+C, or the window's X.
+Each draw function returns the key pressed, or 255 if none. It returns
+27 (Esc) when the window was closed with X, so main.py quits.
 
 The panel text is the same as the first version of this file.
 """
@@ -15,6 +16,9 @@ SCREEN_W, SCREEN_H = 1280, 720     # size of the canvas we draw on
 CAM_W = 960                        # camera area on the left
 PANEL_W = SCREEN_W - CAM_W         # 320 px status panel on the right
 FONT = cv2.FONT_HERSHEY_DUPLEX     # bold font for the warning
+ESC = 27
+
+_shown = False                     # True after the first imshow
 
 
 def make_window():
@@ -23,6 +27,18 @@ def make_window():
     cv2.resizeWindow(WINDOW_NAME, SCREEN_W, SCREEN_H)
     if START_FULLSCREEN:
         cv2.setWindowProperty(WINDOW_NAME, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+
+
+def _window_closed():
+    """True if the user closed the window with its X button.
+
+    On this OpenCV build, asking about a closed window raises an error
+    instead of returning 0, so an error counts as closed.
+    """
+    try:
+        return cv2.getWindowProperty(WINDOW_NAME, cv2.WND_PROP_VISIBLE) < 1
+    except cv2.error:
+        return True
 
 
 def draw_state(state):
@@ -47,8 +63,14 @@ def draw_screen(frame, state, status_lines):
 
     frame: the camera image (BGR), with zone and boxes already drawn on it.
     status_lines: short text lines shown in the panel.
-    Returns the key pressed (255 if none).
+    Returns the key pressed (255 if none), or 27 if the window was closed.
     """
+    global _shown
+
+    # Check before drawing, so a closed window is not reopened by imshow
+    if _shown and _window_closed():
+        return ESC
+
     canvas = np.full((SCREEN_H, SCREEN_W, 3), 20, dtype=np.uint8)
     canvas[:, :CAM_W] = cv2.resize(frame, (CAM_W, SCREEN_H))
 
@@ -73,6 +95,7 @@ def draw_screen(frame, state, status_lines):
         y += 40
 
     cv2.imshow(WINDOW_NAME, canvas)
+    _shown = True
     return cv2.waitKey(1) & 0xFF
 
 
