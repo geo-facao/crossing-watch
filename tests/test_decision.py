@@ -46,3 +46,14 @@ def test_old_hits_fall_out_of_window():
     for t in range(2, 7):                    # push the two hits out of the window
         d.update(False, now=t * 0.1)
     assert d.update(True, now=1.0) == "IDLE"
+
+
+def test_miss_frames_do_not_extend_hold():
+    d = Decider()
+    for t in [0.0, 0.1, 0.2]:                # alert starts; last hit is at 0.2
+        d.update(True, now=t)
+    for t in [0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]:
+        d.update(False, now=t)               # misses should not move the hold timer
+    # Hold ends 5 s after the last HIT (0.2), so 5.1 is still ALERT and 5.3 is IDLE
+    assert d.update(False, now=5.1) == "ALERT"
+    assert d.update(False, now=5.3) == "IDLE"

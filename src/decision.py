@@ -3,7 +3,9 @@
 Rules:
   - A frame "hits" if at least one animal is inside the zone.
   - ALERT starts when 3 of the last 5 frames are hits.
-  - ALERT stays on for 5 seconds after the last hit, then returns to IDLE.
+  - Each hit frame while ALERT restarts the 5-second hold.
+  - Miss frames never extend the hold. ALERT returns to IDLE 5 seconds
+    after the last hit.
 """
 from collections import deque
 
@@ -25,11 +27,15 @@ class Decider:
         """
         self.recent.append(bool(frame_has_hit))
 
+        # Enough hits in the window starts the alert.
+        # (Adding a miss can only lower the count, so this happens on hit frames.)
         if sum(self.recent) >= NEEDED:
             self.state = "ALERT"
-            self.last_hit_time = now
-        elif self.state == "ALERT" and self.last_hit_time is not None:
-            # Stay in ALERT until the hold time has passed with no new hits
-            if now - self.last_hit_time >= HOLD_SECONDS:
+
+        if self.state == "ALERT":
+            if frame_has_hit:
+                # Only a real hit frame moves the hold timer forward
+                self.last_hit_time = now
+            elif now - self.last_hit_time >= HOLD_SECONDS:
                 self.state = "IDLE"
         return self.state

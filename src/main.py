@@ -1,30 +1,28 @@
 """Main loop: camera -> detector -> zone check -> decision -> display -> log.
 
-Run from the project root:
-  python src/main.py            # full-screen warning only
-  python src/main.py --debug    # also show a window with detection boxes
-Press 'q' in a window, or Ctrl+C in the terminal, to quit.
+Run from the project root:  python src/main.py
+Quit with 'q' or Esc while the window has focus, or Ctrl+C in the terminal.
 """
-import argparse
 import os
 import sys
 import time
+from datetime import datetime
 
 import cv2
 import yaml
 from ultralytics import YOLO
 
 sys.path.insert(0, os.path.dirname(__file__))
-import display                        # noqa: E402
-from decision import Decider          # noqa: E402
-from logger import DetectionLogger    # noqa: E402
-from zone import make_zone, in_zone   # noqa: E402
+from decision import Decider                                # noqa: E402
+from display import make_window, draw_screen, close_window  # noqa: E402
+from logger import DetectionLogger                          # noqa: E402
+from zone import make_zone, in_zone                         # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CONFIG_PATH = os.path.join(ROOT, "config.yaml")
 MODEL_PATH = os.path.join(ROOT, "yolo11n.pt")
 ZONE_LABEL = "roadside"
-DEBUG_WINDOW = "detections (debug)"
+QUIT_KEYS = (ord("q"), 27)          # 'q' or Esc (27)
 # COCO classes that count as wildlife
 ANIMAL_CLASSES = {"bird", "cat", "dog", "horse", "sheep", "cow",
                   "elephant", "bear", "zebra", "giraffe"}
@@ -45,11 +43,11 @@ def open_camera(cfg):
     return cap
 
 
-def detect(model, frame, conf_min, image_size):
+def detect(model, frame, conf_min, image_size=640):
     """Return a list of (box_xyxy, confidence, class_name) for this frame.
 
-    image_size is the square size the model resizes each frame to.
-    Smaller is faster but can miss small animals.
+    image_size is the square size the frame is resized to before the model
+    runs. Smaller is faster but may miss small animals.
     """
     result = model(frame, imgsz=image_size, verbose=False)[0]
     out = []
@@ -57,16 +55,16 @@ def detect(model, frame, conf_min, image_size):
         conf = float(b.conf[0])
         if conf < conf_min:
             continue
+        box = tuple(float(v) for v in b.xyxy[0])
         cls_name = result.names[int(b.cls[0])]
         if cls_name not in ANIMAL_CLASSES:
             continue
-        box = tuple(float(v) for v in b.xyxy[0])
         out.append((box, conf, cls_name))
     return out
 
 
 def draw(frame, zone_poly, state, hits):
-    """Draw the zone, boxes, and state label onto the frame (debug window only)."""
+    """Draw the zone outline, detection boxes, and state label on the frame."""
     cv2.polylines(frame, [zone_poly], True, (0, 255, 255), 2)
     for box, conf, name, in_z in hits:
         x1, y1, x2, y2 = map(int, box)
@@ -79,15 +77,24 @@ def draw(frame, zone_poly, state, hits):
     return frame
 
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--debug", action="store_true",
-                        help="also show a window with detection boxes")
-    args = parser.parse_args()
+def status_lines(state, animal_in_zone, alert_count, last_alert):
+    """Text shown in the status panel on the monitor."""
+    lines = [
+        "Watching: roadside zone",
+        f"State: {state}",
+        f"Animal in zone: {'yes' if animal_in_zone else 'no'}",
+        f"Alerts this run: {alert_count}",
+    ]
+    if last_alert:
+        lines.append(f"Last alert: {last_alert}")
+    lines.append(f"Time: {datetime.now():%H:%M:%S}")
+    return lines
 
+
+def main():
     cfg = load_config()
     conf_min = cfg["detector"]["confidence"]
-    image_size = cfg["detector"]["image_size"]
+    image_size = cfg["detector"]["image_size"]   # 320 in config.yaml
     zone_poly = make_zone(cfg["zone"]["points"])
 
     model = YOLO(MODEL_PATH)
@@ -95,13 +102,10 @@ def main():
     decider = Decider()
     log = DetectionLogger(os.path.join(ROOT, "data", "logs", "detections.csv"))
 
-    # The full-screen warning window is always on
-    display.make_window()
-    display.draw_state("IDLE")
-    if args.debug:
-        cv2.namedWindow(DEBUG_WINDOW, cv2.WINDOW_NORMAL)
-        cv2.resizeWindow(DEBUG_WINDOW, 960, 720)
+    alert_count = 0
+    last_alert = None        # text like "17:23:21 cat 0.83"
 
+    make_window()
     prev_state = "IDLE"
     try:
         while True:
@@ -119,31 +123,29 @@ def main():
                 if in_z and (best_hit is None or conf > best_hit[1]):
                     best_hit = (box, conf, name)
 
-            state = decider.update(best_hit is not None, time.monotonic())
+            animal_in_zone = best_hit is not None
+            state = decider.update(animal_in_zone, time.monotonic())
 
-            # Log once when an alert starts
             if state == "ALERT" and prev_state == "IDLE" and best_hit is not None:
                 _, conf, name = best_hit
                 log.log_alert(name, conf, zone=ZONE_LABEL)
+                alert_count += 1
+                last_alert = f"{datetime.now():%H:%M:%S} {name} {conf:.2f}"
                 print(f"ALERT: {name} ({conf:.2f})")
-
-            # Redraw the warning screen only when the state changes
-            if state != prev_state:
-                display.draw_state(state)
             prev_state = state
 
-            if args.debug:
-                cv2.imshow(DEBUG_WINDOW, draw(frame, zone_poly, state, hits))
-
-            # waitKey keeps the windows responsive; 'q' quits
-            if cv2.waitKey(1) & 0xFF == ord("q"):
+            view = draw(frame.copy(), zone_poly, state, hits)
+            lines = status_lines(state, animal_in_zone, alert_count, last_alert)
+            key = draw_screen(view, state, lines)
+            if key in QUIT_KEYS:
+                print("Quit from the window.")
                 break
     except KeyboardInterrupt:
         pass
     finally:
         cap.release()
         log.close()
-        display.close_window()
+        close_window()
 
 
 if __name__ == "__main__":
