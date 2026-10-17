@@ -6,6 +6,10 @@ Rules:
   - Each hit frame while ALERT restarts the 5-second hold.
   - Miss frames never extend the hold. ALERT returns to IDLE 5 seconds
     after the last hit.
+  - When ALERT ends, the frame window is cleared, so hits from the alert
+    that just ended can never count toward a new one. (Without this, a
+    camera stall longer than the hold could leave old hits in the window,
+    and a single new hit would start a new alert.)
 """
 from collections import deque
 
@@ -38,4 +42,5 @@ class Decider:
                 self.last_hit_time = now
             elif now - self.last_hit_time >= HOLD_SECONDS:
                 self.state = "IDLE"
+                self.recent.clear()   # forget hits from the alert that just ended
         return self.state

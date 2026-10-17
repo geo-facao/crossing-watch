@@ -57,3 +57,23 @@ def test_miss_frames_do_not_extend_hold():
     # Hold ends 5 s after the last HIT (0.2), so 5.1 is still ALERT and 5.3 is IDLE
     assert d.update(False, now=5.1) == "ALERT"
     assert d.update(False, now=5.3) == "IDLE"
+
+
+def test_stale_hits_do_not_retrigger_after_gap():
+    d = Decider()
+    for t in (0.0, 0.1, 0.2):                # alert starts; last hit is at 0.2
+        d.update(True, now=t)
+    # The camera stalls for 6 s, longer than the 5-second hold
+    assert d.update(False, now=6.3) == "IDLE"
+    # One new hit must not start an alert from the old hits
+    assert d.update(True, now=6.5) == "IDLE"
+
+
+def test_new_alert_needs_three_fresh_hits():
+    d = Decider()
+    for t in (0.0, 0.1, 0.2):
+        d.update(True, now=t)
+    d.update(False, now=6.3)                 # alert ends
+    d.update(True, now=6.4)
+    d.update(True, now=6.5)
+    assert d.update(True, now=6.6) == "ALERT"

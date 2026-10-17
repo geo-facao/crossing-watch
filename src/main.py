@@ -138,13 +138,17 @@ def detect(model, frame, conf_min, image_size=640):
 
 
 def draw(frame, zone_poly, state, hits):
-    """Draw the zone outline, detection boxes, and state label on the frame."""
+    """Draw the zone outline, detection boxes, and state label on the frame.
+
+    Boxes say "animal", not the model's species guess (which is often
+    wrong, e.g. "cow" for a deer). The guess is kept in the log's raw_label.
+    """
     cv2.polylines(frame, [zone_poly], True, (0, 255, 255), 2)
-    for box, conf, name, in_z in hits:
+    for box, conf, _name, in_z in hits:
         x1, y1, x2, y2 = map(int, box)
         color = (0, 0, 255) if in_z else (0, 255, 0)
         cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
-        cv2.putText(frame, f"{name} {conf:.2f}", (x1, y1 - 6),
+        cv2.putText(frame, f"animal {conf:.2f}", (x1, y1 - 6),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
     color = (0, 0, 255) if state == "ALERT" else (0, 200, 0)
     cv2.putText(frame, state, (20, 50), cv2.FONT_HERSHEY_SIMPLEX, 1.4, color, 3)
